@@ -39,7 +39,7 @@ class FinanceAgent:
         self.feishu_webhook = os.getenv("FEISHU_WEBHOOK", "")
         
         # 时效性：仅提取过去 12 小时的内容
-        self.time_threshold = datetime.now() - timedelta(hours=12)
+        self.time_threshold = datetime.now() - timedelta(hours=6)
         
     def fetch_rss_feeds(self) -> List[Dict]:
         """抓取所有 RSS 源的内容"""
@@ -390,3 +390,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
