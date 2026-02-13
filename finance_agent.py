@@ -127,8 +127,25 @@ class FinanceAgent:
             if len(cleaned_content) >= 15:
                 article['cleaned_content'] = cleaned_content
                 filtered.append(article)
-        
+
         return filtered
+
+    def limit_input_articles(self, articles: List[Dict]) -> List[Dict]:
+        """
+        输入端“防爆”逻辑：
+        在合并为字符串前，先估算总字数；若超过 10,000 字，则仅保留时间戳最新的 30 条新闻摘要。
+        不对字符串做硬截断，只通过减少文章数量控制长度。
+        """
+        if not articles:
+            return articles
+
+        # 假设 articles 已按发布时间倒序（最新在前）
+        combined_text = "".join(a.get("cleaned_content", "") for a in articles)
+        if len(combined_text) <= 10000 or len(articles) <= 30:
+            return articles
+
+        print("⚠️ 输入内容总长度超过 10000 字，仅保留最新 30 条新闻用于 AI 分析")
+        return articles[:30]
     
     def format_to_markdown(self, articles: List[Dict]) -> str:
         """将所有内容整合为 Markdown 格式"""
@@ -156,7 +173,7 @@ class FinanceAgent:
                 "Content-Type": "application/json"
             }
             
-            # 构建请求体（兼容 OpenAI 格式）
+            # 构建请求体（兼容 OpenAI / OpenAI 兼容中转 API）
             payload = {
                 "model": self.model,
                 "messages": [
@@ -170,11 +187,21 @@ class FinanceAgent:
                     }
                 ],
                 "temperature": 0.7,
-                "max_tokens": 2000
+                # 输出限制：给 AI 足够的空间完整回答
+                "max_tokens": 4096
             }
-            
+
+            # 兼容多种 base_url 形式，避免出现 /v1/v1 这种情况
+            # 推荐：AI_BASE_URL 配置为类似 https://api.openai.com 或你的中转根地址
+            base = (self.base_url or "").strip().rstrip("/")
+            # 如果用户把 /v1 也写进去了，这里帮忙去掉一次，统一自己补 /v1
+            if base.endswith("/v1"):
+                base = base[:-3]
+
+            url = f"{base}/v1/chat/completions"
+
             response = requests.post(
-                f"{self.base_url}/v1/chat/completions",
+                url,
                 headers=headers,
                 json=payload,
                 timeout=60
@@ -195,14 +222,20 @@ class FinanceAgent:
         """使用 AI 分析原始资料"""
         prompt = f"""你现在是顶尖对冲基金经理。请将提供的原始资料处理为两部分：
 
+
+
 [12小时要闻总结]：用极简的 3-5 条 bullet points 告诉用户发生了什么重大事件，严禁废话。
 
-[投资研判建议]：根据新闻逻辑，识别 1 个最可能的'主线题材'，推荐 2 只主板股或 ETF，并给出明确的买入理由及预计卖出条件。
+
+
+[投资研判建议]：根据新闻逻辑，识别 1 个最可能的“主线题材”。注意：题材要细化（例如从“AI”细化到“AI算力租赁”），不能过于宽泛，并详细拆解其上涨逻辑。
+
+
 
 原始资料：
 {markdown_content}
 """
-        
+
         analysis = self.call_ai_api(prompt)
         if analysis:
             return analysis
@@ -216,42 +249,66 @@ class FinanceAgent:
             return
         
         try:
-            # 飞书 Webhook 支持 Markdown 格式
-            payload = {
-                "msg_type": "interactive",
-                "card": {
-                    "config": {
-                        "wide_screen_mode": True
-                    },
-                    "header": {
-                        "title": {
-                            "tag": "plain_text",
-                            "content": "📊 金融资讯分析报告"
-                        },
-                        "template": "blue"
-                    },
-                    "elements": [
-                        {
-                            "tag": "div",
-                            "text": {
-                                "tag": "lark_md",
-                                "content": content
-                            }
-                        }
-                    ]
-                }
-            }
-            
-            response = requests.post(
-                self.feishu_webhook,
-                json=payload,
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                print("✅ 飞书推送成功")
+            # 输出端“分段推送”逻辑：
+            # 若内容超过 4000 字，自动拆分为 Part 1 / Part 2 / ... 依次推送
+            max_len = 4000
+            text = content or ""
+
+            parts = []
+            if len(text) <= max_len:
+                parts = [text]
             else:
-                print(f"❌ 飞书推送失败: {response.status_code} - {response.text}")
+                start = 0
+                total_length = len(text)
+                while start < total_length:
+                    end = min(total_length, start + max_len)
+                    # 优先在当前段内寻找一个合适的换行作为分割点，避免打断 Markdown 结构
+                    split_pos = text.rfind("\n", start, end)
+                    if split_pos == -1 or split_pos <= start + max_len * 0.5:
+                        split_pos = end
+                    parts.append(text[start:split_pos])
+                    start = split_pos
+
+            total_parts = len(parts)
+
+            for idx, part in enumerate(parts, start=1):
+                suffix = "" if total_parts == 1 else f" - Part {idx}/{total_parts}"
+
+                payload = {
+                    "msg_type": "interactive",
+                    "card": {
+                        "config": {
+                            "wide_screen_mode": True
+                        },
+                        "header": {
+                            "title": {
+                                "tag": "plain_text",
+                                "content": f"📊 金融资讯分析报告{suffix}"
+                            },
+                            "template": "blue"
+                        },
+                        "elements": [
+                            {
+                                "tag": "div",
+                                "text": {
+                                    "tag": "lark_md",
+                                    "content": part
+                                }
+                            }
+                        ]
+                    }
+                }
+
+                response = requests.post(
+                    self.feishu_webhook,
+                    json=payload,
+                    timeout=30
+                )
+
+                if response.status_code == 200:
+                    print(f"✅ 飞书推送成功（{idx}/{total_parts}）")
+                else:
+                    print(f"❌ 飞书推送失败（{idx}/{total_parts}）: {response.status_code} - {response.text}")
                 
         except Exception as e:
             print(f"❌ 飞书推送异常: {str(e)}")
@@ -279,14 +336,25 @@ class FinanceAgent:
         if not filtered_articles:
             print("⚠️ 过滤后没有有效内容，退出")
             return
-        
+
+        # 2.5 输入端“防爆”：控制送入 AI 的新闻总长度
+        filtered_articles = self.limit_input_articles(filtered_articles)
+
         # 3. 格式化为 Markdown
         print("\n📝 步骤 3: 格式化为 Markdown...")
         markdown_content = self.format_to_markdown(filtered_articles)
+
+        # 抓取 & 整理完成后的内容长度监控
+        content = markdown_content
+        print(f"当前内容长度: {len(content)}")
         
         # 4. AI 分析
         print("\n🤖 步骤 4: AI 分析中...")
         analysis_result = self.analyze_with_ai(markdown_content)
+
+        # AI 生成完成后的内容长度监控
+        content = analysis_result
+        print(f"当前内容长度: {len(content)}")
         
         # 5. 组合最终内容
         final_content = f"""## 📊 12小时金融资讯分析报告
@@ -296,6 +364,10 @@ class FinanceAgent:
 ---
 *报告生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*
 """
+
+        # 推送前内容长度监控
+        content = final_content
+        print(f"当前内容长度: {len(content)}")
         
         # 6. 推送到飞书
         print("\n📤 步骤 5: 推送到飞书...")
