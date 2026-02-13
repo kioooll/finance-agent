@@ -31,15 +31,15 @@ class FinanceAgent:
         ]
         
         # AI API 配置（从环境变量读取）
-        self.model = os.getenv("AI_MODEL", "gpt-4")
+        self.model = os.getenv("AI_MODEL", "")
         self.base_url = os.getenv("AI_BASE_URL", "")
         self.api_key = os.getenv("AI_API_KEY", "")
         
         # 飞书 Webhook 配置
         self.feishu_webhook = os.getenv("FEISHU_WEBHOOK", "")
         
-        # 时效性：仅提取过去 12 小时的内容
-        self.time_threshold = datetime.now() - timedelta(hours=6)
+        # 时效性：仅提取过去 9 小时的内容
+        self.time_threshold = datetime.now() - timedelta(hours=9)
         
     def fetch_rss_feeds(self) -> List[Dict]:
         """抓取所有 RSS 源的内容"""
@@ -54,7 +54,7 @@ class FinanceAgent:
                     # 解析发布时间
                     published_time = self._parse_publish_time(entry)
                     
-                    # 只保留过去 12 小时的内容
+                    # 只保留过去 9 小时的内容
                     if published_time and published_time >= self.time_threshold:
                         article = {
                             "title": entry.get("title", ""),
@@ -153,7 +153,7 @@ class FinanceAgent:
     
     def format_to_markdown(self, articles: List[Dict]) -> str:
         """将所有内容整合为 Markdown 格式"""
-        markdown_lines = ["# 金融资讯汇总（过去12小时）\n"]
+        markdown_lines = ["# 金融资讯汇总（过去9小时）\n"]
         
         for article in articles:
             markdown_lines.append(f"## {article['title']}")
@@ -390,4 +390,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
