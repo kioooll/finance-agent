@@ -1,0 +1,36 @@
+name: Finance Agent Daily Run
+
+on:
+  schedule:
+    # 北京时间 08:15 (UTC 00:15)
+    - cron: '15 0 * * *'
+    # 北京时间 20:15 (UTC 12:15)
+    - cron: '15 12 * * *'
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  finance-analysis:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v3
+    
+    - name: 设置 Python 环境
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: 安装依赖
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: 运行金融分析脚本
+      env:
+        AI_MODEL: ${{ secrets.AI_MODEL }}
+        AI_BASE_URL: ${{ secrets.AI_BASE_URL }}
+        AI_API_KEY: ${{ secrets.AI_API_KEY }}
+        FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
+      run: |
+        python finance_agent.py
