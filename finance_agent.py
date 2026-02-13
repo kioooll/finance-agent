@@ -122,7 +122,11 @@ class FinanceAgent:
             # 合并标题和摘要
             content = f"{article['title']} {article['summary']}"
             cleaned_content = self.clean_text(content)
-            
+
+            # 智能缩减：每篇文章的摘要（含标题）最多保留前 400 字符，避免单条过长
+            if len(cleaned_content) > 400:
+                cleaned_content = cleaned_content[:400]
+
             # 只保留内容长度 >= 15 字的文章
             if len(cleaned_content) >= 15:
                 article['cleaned_content'] = cleaned_content
@@ -133,7 +137,7 @@ class FinanceAgent:
     def limit_input_articles(self, articles: List[Dict]) -> List[Dict]:
         """
         输入端“防爆”逻辑：
-        在合并为字符串前，先估算总字数；若超过 10,000 字，则仅保留时间戳最新的 30 条新闻摘要。
+        在合并为字符串前，先估算总字数；若超过 8,000 字，则仅保留时间戳最新的 15 条新闻摘要。
         不对字符串做硬截断，只通过减少文章数量控制长度。
         """
         if not articles:
@@ -141,11 +145,11 @@ class FinanceAgent:
 
         # 假设 articles 已按发布时间倒序（最新在前）
         combined_text = "".join(a.get("cleaned_content", "") for a in articles)
-        if len(combined_text) <= 10000 or len(articles) <= 30:
+        if len(combined_text) <= 8000 or len(articles) <= 15:
             return articles
 
-        print("⚠️ 输入内容总长度超过 10000 字，仅保留最新 30 条新闻用于 AI 分析")
-        return articles[:30]
+        print("⚠️ 输入内容总长度超过 8000 字，仅保留最新 15 条新闻用于 AI 分析")
+        return articles[:15]
     
     def format_to_markdown(self, articles: List[Dict]) -> str:
         """将所有内容整合为 Markdown 格式"""
@@ -204,7 +208,7 @@ class FinanceAgent:
                 url,
                 headers=headers,
                 json=payload,
-                timeout=60
+                timeout=300  # 对长文本分析增加超时时间到 300 秒
             )
             
             if response.status_code == 200:
