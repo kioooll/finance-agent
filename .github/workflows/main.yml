@@ -2,12 +2,10 @@ name: Finance Agent Daily Run
 
 on:
   schedule:
-    # 北京时间 06:13
-    - cron: '13 22 * * *'
+    # 北京时间 08:30
+    - cron: '30 0 * * *'
     # 北京时间 14:13
-    - cron: '13 6 * * *'
-    # 北京时间 22:13
-    - cron: '13 14 * * *'
+    - cron: '30 12 * * *'
   workflow_dispatch:  # 允许手动触发
 
 jobs:
@@ -36,4 +34,5 @@ jobs:
         FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
       run: |
         python finance_agent.py
+
 
