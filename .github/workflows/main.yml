@@ -2,11 +2,10 @@ name: Finance Agent Daily Run
 
 on:
   schedule:
-    # 北京时间 08:30
     - cron: '30 0 * * *'
-    # 北京时间 14:13
-    - cron: '30 12 * * *'
-  workflow_dispatch:  # 允许手动触发
+    - cron: '30 8 * * *'
+    - cron: '30 16 * * *'
+  workflow_dispatch: # 允许手动触发
 
 jobs:
   finance-analysis:
@@ -14,12 +13,21 @@ jobs:
     
     steps:
     - name: 检出代码
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4 # 建议升级到最新版本
     
     - name: 设置 Python 环境
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5 # 建议升级到最新版本
       with:
         python-version: '3.10'
+    
+    # 新增：缓存 pip 依赖，大幅缩短安装时间
+    - name: 配置 pip 缓存
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
     
     - name: 安装依赖
       run: |
@@ -34,5 +42,3 @@ jobs:
         FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
       run: |
         python finance_agent.py
-
-
